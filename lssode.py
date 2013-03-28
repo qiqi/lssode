@@ -14,7 +14,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 '''This module contains tools for performing tangnet sensitivity analysis
-and adjoint sensitivity analysis.
+and adjoint sensitivity analysis.  The details are described in our paper
+"Sensitivity computation of periodic and chaotic limit cycle oscillations"
+at http://arxiv.org/abs/1204.0159
 
 User should define two bi-variate functions, f and J
 
