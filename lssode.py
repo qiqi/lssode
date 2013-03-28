@@ -53,7 +53,7 @@ Using tangent sensitivity analysis:
         dJds = tan.dJds(J)
         # you can use the same "tan" for more "J"s ...
 
-Using tangent sensitivity analysis:
+Using adjoint sensitivity analysis:
         adj = Adjoint(f, u0, s, t, J)
         dJds = adj.dJds()
         # you can use the same "adj" for more "s"s
