@@ -60,7 +60,6 @@ Using tangent sensitivity analysis:
         #     via adj.dJds(dfds, dJds)... See doc for the Adjoint class
 '''
 
-import types
 import numpy as np
 from scipy import sparse
 from scipy.integrate import odeint
@@ -246,5 +245,4 @@ class Adjoint(LSS):
         grad1 = prod.sum(0).sum(0)
         grad2 = dJds(self.uMid, self.s).mean(0)
         return grad1 + grad2
-
 
