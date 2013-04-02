@@ -211,7 +211,7 @@ class Tangent(LSS):
               - (self.eta[:,np.newaxis] * (J0 - J0.mean(0))).mean(0)
 
         grad2 = dJds(self.uMid, self.s).mean(0)
-        return grad1 + grad2
+        return ravel(grad1 + grad2)
 
 
 class Adjoint(LSS):
@@ -244,5 +244,5 @@ class Adjoint(LSS):
         prod = self.wa[:,:,np.newaxis] * dfds(self.uMid, self.s)
         grad1 = prod.sum(0).sum(0)
         grad2 = dJds(self.uMid, self.s).mean(0)
-        return grad1 + grad2
+        return ravel(grad1 + grad2)
 
