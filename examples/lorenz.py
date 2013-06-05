@@ -40,7 +40,7 @@ for rho in rhos:
         x0 = random.rand(3)
         adj = Adjoint(lorenz, x0, rho, t, obj)
 
-        J = adj.evaluate(obj)
+        J = adj.evaluate()
         dJds = adj.dJds()
         adjoint.append(dJds)
 

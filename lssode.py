@@ -136,21 +136,26 @@ class LSS(object):
             dfdu = ddu(f)
         self.dfdu = dfdu
 
-        # run up to t[0]
-        f = lambda u, t : self.f(u, s)
-        assert t[0] >= 0 and t.size > 1
-        N0 = int(t[0] / (t[-1] - t[0]) * t.size)
-        u0 = odeint(f, u0, np.linspace(0, t[0], N0+1))[-1]
+        u0 = np.array(u0)
+        if u0.ndim == 1:
+            # run up to t[0]
+            f = lambda u, t : self.f(u, s)
+            assert t[0] >= 0 and t.size > 1
+            N0 = int(t[0] / (t[-1] - t[0]) * t.size)
+            u0 = odeint(f, u0, np.linspace(0, t[0], N0+1))[-1]
 
-        # compute a trajectory
-        self.u = odeint(f, u0, t - t[0])
+            # compute a trajectory
+            self.u = odeint(f, u0, t - t[0])
+        else:
+            assert (u0.shape[0],) == t.shape
+            self.u = u0.copy()
 
         self.dt = t[1:] - t[:-1]
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
         self.buildSparseMatrices()
-    
+
     def buildSparseMatrices(self):
         '''
         Building B: the block-bidiagonal matrix,
@@ -183,7 +188,16 @@ class LSS(object):
 
 
 class Tangent(LSS):
-    def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=0.1):
+    '''
+    Tagent(f, u0, s, t, dfds=None, dfdu=None, alpha=10)
+    f: governing equation du/dt = f(u, s)
+    u0: initial condition (1d array) or the entire trajectory (2d array)
+    s: parameter
+    t: time (1d array).  t[0] is run up time from initial condition.
+    dfds and dfdu is computed from f if left undefined.
+    alpha: weight of the time dilation term in LSS.
+    '''
+    def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=10):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         S = self.Schur(alpha)
@@ -215,7 +229,17 @@ class Tangent(LSS):
 
 
 class Adjoint(LSS):
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, alpha=0.1):
+    '''
+    Adjoint(f, u0, s, t, J, dJdu=None, dfdu=None, alpha=10)
+    f: governing equation du/dt = f(u, s)
+    u0: initial condition (1d array) or the entire trajectory (2d array)
+    s: parameter
+    t: time (1d array).  t[0] is run up time from initial condition.
+    J: objective function. QoI = mean(J(u))
+    dJdu and dfdu is computed from f if left undefined.
+    alpha: weight of the time dilation term in LSS.
+    '''
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, alpha=10):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         S = self.Schur(alpha)
@@ -234,6 +258,10 @@ class Adjoint(LSS):
 
         self.wa = wa.reshape(self.uMid.shape)
         self.J, self.dJdu = J, dJdu
+
+    def evaluate(self):
+        'Evaluate the time averaged objective function'
+        return self.J(self.u, self.s).mean(0)
 
     def dJds(self, dfds=None, dJds=None):
         if dfds is None:
