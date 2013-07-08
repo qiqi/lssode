@@ -44,7 +44,7 @@ for mu in mus:
         x0 = random.rand(2)
         adj = Adjoint(vanderpol, x0, mu, t, obj)
 
-        J = adj.evaluate(obj)
+        J = adj.evaluate()
         dJds = adj.dJds()
 
         J = pow(J, 1./8)
