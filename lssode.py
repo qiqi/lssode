@@ -77,6 +77,12 @@ import scipy.sparse.linalg as splinalg
 __all__ = ["ddu", "dds", "Tangent", "Adjoint", "lssSolver"]
 
 
+def _diag(a):
+    'Construct a block diagonal sparse matrix, A[i,:,:] is the ith block'
+    assert a.ndim == 1
+    n = a.size
+    return sparse.csr_matrix((a, np.r_[:n], np.r_[:n+1]))
+
 def _block_diag(A):
     'Construct a block diagonal sparse matrix, A[i,:,:] is the ith block'
     assert A.ndim == 3
@@ -188,8 +194,8 @@ class LSS(object):
         dtFrac = self.dt / (self.t[-1] - self.t[0])
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
         wb = np.ones(m) * wb[:,np.newaxis]
-        self.wBinv = sparse.diags(np.ravel(1./ wb), 0)
-        self.wEinv = alpha**2 * sparse.diags(np.ravel(1./ dtFrac), 0)
+        self.wBinv = _diag(np.ravel(1./ wb))
+        self.wEinv = alpha**2 * _diag(1./ dtFrac)
 
         return (self.B * self.wBinv * self.B.T) + \
                (self.E * self.wEinv * self.E.T)
