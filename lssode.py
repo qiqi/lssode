@@ -134,8 +134,8 @@ class LSS(object):
     '''
     def __init__(self, f, u0, s, t, dfdu=None):
         self.f = f
-        self.t = np.array(t).copy()
-        self.s = np.array(s).copy()
+        self.t = np.array(t, float).copy()
+        self.s = np.array(s, float).copy()
 
         if self.s.ndim == 0:
             self.s = self.s[np.newaxis]
@@ -144,7 +144,7 @@ class LSS(object):
             dfdu = ddu(f)
         self.dfdu = dfdu
 
-        u0 = np.array(u0)
+        u0 = np.array(u0, float)
         if u0.ndim == 1:
             # run up to t[0]
             f = lambda u, t : self.f(u, s)
@@ -308,7 +308,7 @@ class lssSolver(LSS):
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
         Smat = self.Schur(self.alpha)
 
-        s = np.array(s).copy()
+        s = np.array(s, float).copy()
         if s.ndim == 0:
             s = s[np.newaxis]
         assert s.shape == self.s.shape
