@@ -184,7 +184,15 @@ class LSS(object):
         self.B = DDT.tocsr() - L.tocsr()
         self.E = _block_diag(self.dudt[:,:,np.newaxis]).tocsr()
 
-        return (self.B * self.B.T) + (self.E * self.E.T) / alpha**2
+        # the diagonal weights
+        dtFrac = self.dt / (self.t[-1] - self.t[0])
+        wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
+        wb = np.ones(m) * wb[:,np.newaxis]
+        self.wBinv = sparse.diags(np.ravel(1./ wb), 0)
+        self.wEinv = alpha**2 * sparse.diags(np.ravel(1./ dtFrac), 0)
+
+        return (self.B * self.wBinv * self.B.T) + \
+               (self.E * self.wEinv * self.E.T)
 
     def evaluate(self, J):
         'Evaluate a time averaged objective function'
@@ -212,10 +220,10 @@ class Tangent(LSS):
         assert b.size == Smat.shape[0]
 
         w = splinalg.spsolve(Smat, np.ravel(b))
-        v = self.B.T * w
+        v = self.wBinv * (self.B.T * w)
 
         self.v = v.reshape(self.u.shape)
-        self.eta = self.E.T * w / alpha**2
+        self.eta = self.wEinv * (self.E.T * w)
 
     def dJds(self, J, T0skip=0, T1skip=0):
         'Evaluate the derivative of the time averaged objective function to s'
@@ -257,14 +265,14 @@ class Adjoint(LSS):
 
         J0 = J(self.uMid, self.s)
         assert J0.ndim == 1
-        h = -(J0 - J0.mean()) / (alpha**2 * J0.size)    # multiplier on eta
+        h = -(J0 - J0.mean()) / J0.size            # multiplier on eta
 
         if dJdu is None:
             dJdu = ddu(J)
-        g = dJdu(self.u, self.s) / self.u.shape[0]      # multiplier on v
+        g = dJdu(self.u, self.s) / self.u.shape[0]  # multiplier on v
         assert g.size == self.u.size
 
-        b = self.E * h + self.B * np.ravel(g)
+        b = self.E * (self.wEinv * h) + self.B * (self.wBinv * np.ravel(g))
         wa = splinalg.spsolve(Smat, b)
 
         self.wa = wa.reshape(self.uMid.shape)
@@ -308,7 +316,7 @@ class lssSolver(LSS):
         self.alpha = alpha
 
 
-    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4):
+    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
         Smat = self.Schur(self.alpha)
 
         s = np.array(s).copy()
@@ -326,10 +334,10 @@ class lssSolver(LSS):
         for iNewton in range(maxIter):
             # solve
             w = splinalg.spsolve(Smat, np.ravel(b))
-            v = self.B.T * w
+            v = self.wBinv * (self.B.T * w)
 
             v = v.reshape(self.u.shape)
-            eta = self.E.T * w / self.alpha**2
+            eta = self.wEinv * (self.E.T * w)
 
             # update solution and dt
             self.u -= v
@@ -342,6 +350,8 @@ class lssSolver(LSS):
             # recompute residual
             b = self.dudt - self.f(self.uMid, s)
             norm_b = np.linalg.norm(np.ravel(b))
+            if disp:
+                print 'iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0
             if norm_b < atol or norm_b < rtol * norm_b0:
                 return self.t, self.u
 
