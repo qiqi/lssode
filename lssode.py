@@ -185,7 +185,7 @@ class LSS(object):
         self.E = _block_diag(self.dudt[:,:,np.newaxis]).tocsr()
 
         # the diagonal weights
-        dtFrac = self.dt / (self.dt[-1] - self.dt[0])
+        dtFrac = self.dt / (self.t[-1] - self.t[0])
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
         wb = np.ones(m) * wb[:,np.newaxis]
         self.wBinv = sparse.diags(np.ravel(1./ wb), 0)
@@ -305,7 +305,7 @@ class lssSolver(LSS):
         self.alpha = alpha
 
 
-    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4):
+    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
         Smat = self.Schur(self.alpha)
 
         s = np.array(s).copy()
@@ -339,7 +339,8 @@ class lssSolver(LSS):
             # recompute residual
             b = self.dudt - self.f(self.uMid, s)
             norm_b = np.linalg.norm(np.ravel(b))
-            # print iNewton, norm_b, norm_b0
+            if disp:
+                print 'iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0
             if norm_b < atol or norm_b < rtol * norm_b0:
                 return self.t, self.u
 
