@@ -15,9 +15,9 @@ def lorenz(u, rho):
     return transpose([dxdt, dydt, dzdt]).reshape(shp)
 
 
-rhos = linspace(25, 35, 11)
+rhos = linspace(28, 33, 21)
 x0 = random.rand(3)
-dt, T = 0.01, 50
+dt, T = 0.01, 30
 t = 30 + dt * arange(int(T / dt))
 
 solver = lssSolver(lorenz, x0, rhos[0], t)
