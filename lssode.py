@@ -217,19 +217,25 @@ class Tangent(LSS):
         self.v = v.reshape(self.u.shape)
         self.eta = self.E.T * w / alpha**2
 
-    def dJds(self, J):
+    def dJds(self, J, T0skip=0, T1skip=0):
         'Evaluate the derivative of the time averaged objective function to s'
         dJdu, dJds = ddu(J), dds(J)
 
-        J0 = J(self.uMid, self.s)
-        J0 = J0.reshape([self.uMid.shape[0], -1])
+        n0 = (self.t < self.t[0] + T0skip).sum()
+        n1 = (self.t <= self.t[-1] - T1skip).sum()
 
-        Jp = J(self.u + EPS * self.v, self.s).mean(0)
-        Jm = J(self.u - EPS * self.v, self.s).mean(0)
+        u, v = self.u[n0:n1], self.v[n0:n1]
+        uMid, eta = self.uMid[n0:n1-1], self.eta[n0:n1-1]
+
+        J0 = J(uMid, self.s)
+        J0 = J0.reshape([uMid.shape[0], -1])
+
+        Jp = J(u + EPS * v, self.s).mean(0)
+        Jm = J(u - EPS * v, self.s).mean(0)
         grad1 = (Jp - Jm) / (2*EPS) \
-              - (self.eta[:,np.newaxis] * (J0 - J0.mean(0))).mean(0)
+              - (eta[:,np.newaxis] * (J0 - J0.mean(0))).mean(0)
 
-        grad2 = dJds(self.uMid, self.s).mean(0)
+        grad2 = dJds(uMid, self.s).mean(0)
         return np.ravel(grad1 + grad2)
 
 
@@ -269,12 +275,17 @@ class Adjoint(LSS):
         # return self.J(self.u, self.s).mean(0)
         return LSS.evaluate(self, self.J)
 
-    def dJds(self, dfds=None, dJds=None):
+    def dJds(self, dfds=None, dJds=None, T0skip=0, T1skip=0):
         'Evaluate the derivative of the time averaged objective function to s'
         if dfds is None:
             dfds = dds(self.f)
         if dJds is None:
             dJds = dds(self.J)
+
+        n0 = (self.t < self.t[0] + T0skip).sum()
+        n1 = (self.t <= self.t[-1] - T1skip).sum()
+
+        uMid, wa = self.uMid[n0:n1-1], self.wa[n0:n1-1]
 
         prod = self.wa[:,:,np.newaxis] * dfds(self.uMid, self.s)
         grad1 = prod.sum(0).sum(0)
