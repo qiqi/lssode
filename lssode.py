@@ -74,7 +74,7 @@ from scipy.integrate import odeint
 import scipy.sparse.linalg as splinalg
 
 
-__all__ = ["ddu", "dds", "Tangent", "Adjoint", "lssSolver"]
+__all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint", "lssSolver"]
 
 
 def _diag(a):
@@ -92,6 +92,13 @@ def _block_diag(A):
 
 EPS = 1E-7
 
+def set_fd_step(eps):
+    '''Set step size in ddu and dds classess.
+    set eps=1E-30j for complex derivative method.'''
+    assert type(eps) is float or type(eps) is complex
+    EPS = eps
+
+
 class ddu(object):
     def __init__(self, f):
         self.f = f
@@ -102,13 +109,14 @@ class ddu(object):
         N = f0.shape[0]
         n, m = f0.size / N, u.shape[1]
         dfdu = np.zeros( (N, n, m) )
+        u = np.asarray(u, type(EPS))
         for i in range(m):
             u[:,i] += EPS
             fp = self.f(u, s).copy()
             u[:,i] -= EPS * 2
             fm = self.f(u, s).copy()
             u[:,i] += EPS
-            dfdu[:,:,i] = (fp - fm).reshape([N, n]) / (2 * EPS)
+            dfdu[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
         return dfdu
 
 
@@ -122,6 +130,7 @@ class dds(object):
         N = f0.shape[0]
         n, m = f0.size / N, s.size
         dfds = np.zeros( (N, n, m) )
+        s = np.asarray(s, type(EPS))
         for i in range(m):
             s[i] += EPS
             fp = self.f(u, s).copy()
@@ -244,9 +253,7 @@ class Tangent(LSS):
         J0 = J(uMid, self.s)
         J0 = J0.reshape([uMid.shape[0], -1])
 
-        Jp = J(u + EPS * v, self.s).mean(0)
-        Jm = J(u - EPS * v, self.s).mean(0)
-        grad1 = (Jp - Jm) / (2*EPS) \
+        grad1 = (dJdu(u, self.s) * v[:,np.newaxis,:]).sum(2).mean(0) \
               - (eta[:,np.newaxis] * (J0 - J0.mean(0))).mean(0)
 
         grad2 = dJds(uMid, self.s).mean(0)

@@ -7,6 +7,8 @@ from numpy import *
 sys.path.append('..')
 from lssode import *
 
+set_fd_step(1E-30j)
+
 def lorenz(u, rho):
     shp = u.shape
     x, y, z = u.reshape([-1, 3]).T

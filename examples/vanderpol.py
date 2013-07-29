@@ -7,6 +7,8 @@ from numpy import *
 sys.path.append('..')
 from lssode import *
 
+set_fd_step(1E-30j)
+
 def vanderpol(u, mu):
     shp = u.shape
     u = u.reshape([-1,2])
