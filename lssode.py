@@ -95,7 +95,8 @@ EPS = 1E-7
 def set_fd_step(eps):
     """Set step size in ddu and dds classess.
     set eps=1E-30j for complex derivative method."""
-    assert type(eps) is float or type(eps) is complex
+    assert isinstance(eps, (float, complex))
+    global EPS
     EPS = eps
 
 
@@ -117,6 +118,7 @@ class ddu(object):
         n, m = f0.size / N, u.shape[1]
         dfdu = np.zeros( (N, n, m) )
         u = np.asarray(u, type(EPS))
+        s = np.asarray(s, type(EPS))
         for i in range(m):
             u[:,i] += EPS
             fp = self.f(u, s).copy()
@@ -144,6 +146,7 @@ class dds(object):
         N = f0.shape[0]
         n, m = f0.size / N, s.size
         dfds = np.zeros( (N, n, m) )
+        u = np.asarray(u, type(EPS))
         s = np.asarray(s, type(EPS))
         for i in range(m):
             s[i] += EPS
@@ -151,7 +154,7 @@ class dds(object):
             s[i] -= EPS * 2
             fm = self.f(u, s).copy()
             s[i] += EPS
-            dfds[:,:,i] = (fp - fm).reshape([N, n]) / (2 * EPS)
+            dfds[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
         return dfds
 
 
