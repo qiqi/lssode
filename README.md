@@ -1,5 +1,5 @@
-This module contains tools for performing tangnet sensitivity analysis
-and adjoint sensitivity analysis.
+This module contains tools for performing tangnet sensitivity analysis and
+adjoint sensitivity analysis using the Least Squares Shadowing (LSS) method.
 
 The details are described in our paper
 "Sensitivity computation of periodic and chaotic limit cycle oscillations"

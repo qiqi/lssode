@@ -13,7 +13,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-'''This module contains tools for performing tangnet sensitivity analysis
+"""This module contains tools for performing tangnet sensitivity analysis
 and adjoint sensitivity analysis.  The details are described in our paper
 "Sensitivity computation of periodic and chaotic limit cycle oscillations"
 at http://arxiv.org/abs/1204.0159
@@ -66,7 +66,7 @@ Using nonlinear LSS solver:
         # (solver.t, solver.u) is the solution of initial value problem at s0
         solver.lss(s1)
         # (solver.t, solver.u) is the solution of a LSS problem at s
-'''
+"""
 
 import numpy as np
 from scipy import sparse
@@ -74,17 +74,17 @@ from scipy.integrate import odeint
 import scipy.sparse.linalg as splinalg
 
 
-__all__ = ["ddu", "dds", "Tangent", "Adjoint", "lssSolver"]
+__all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint", "lssSolver"]
 
 
 def _diag(a):
-    'Construct a block diagonal sparse matrix, A[i,:,:] is the ith block'
+    """Construct a block diagonal sparse matrix, A[i,:,:] is the ith block"""
     assert a.ndim == 1
     n = a.size
     return sparse.csr_matrix((a, np.r_[:n], np.r_[:n+1]))
 
 def _block_diag(A):
-    'Construct a block diagonal sparse matrix, A[i,:,:] is the ith block'
+    """Construct a block diagonal sparse matrix, A[i,:,:] is the ith block"""
     assert A.ndim == 3
     n = A.shape[0]
     return sparse.bsr_matrix((A, np.r_[:n], np.r_[:n+1]))
@@ -92,7 +92,22 @@ def _block_diag(A):
 
 EPS = 1E-7
 
+def set_fd_step(eps):
+    """Set step size in ddu and dds classess.
+    set eps=1E-30j for complex derivative method."""
+    assert isinstance(eps, (float, complex))
+    global EPS
+    EPS = eps
+
+
 class ddu(object):
+    """Partial derivative of a bivariate function f(u,s)
+    with respect its FIRST argument u
+
+    Usage: print ddu(f)(u,s)
+    Or: dfdu = ddu(f)
+        print dfdu(u,s)
+    """
     def __init__(self, f):
         self.f = f
 
@@ -102,17 +117,26 @@ class ddu(object):
         N = f0.shape[0]
         n, m = f0.size / N, u.shape[1]
         dfdu = np.zeros( (N, n, m) )
+        u = np.asarray(u, type(EPS))
+        s = np.asarray(s, type(EPS))
         for i in range(m):
             u[:,i] += EPS
             fp = self.f(u, s).copy()
             u[:,i] -= EPS * 2
             fm = self.f(u, s).copy()
             u[:,i] += EPS
-            dfdu[:,:,i] = (fp - fm).reshape([N, n]) / (2 * EPS)
+            dfdu[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
         return dfdu
 
 
 class dds(object):
+    """Partial derivative of a bivariate function f(u,s)
+    with respect its SECOND argument s
+
+    Usage: print dds(f)(u,s)
+    Or: dfds = dds(f)
+        print dfds(u,s)
+    """
     def __init__(self, f):
         self.f = f
 
@@ -122,22 +146,24 @@ class dds(object):
         N = f0.shape[0]
         n, m = f0.size / N, s.size
         dfds = np.zeros( (N, n, m) )
+        u = np.asarray(u, type(EPS))
+        s = np.asarray(s, type(EPS))
         for i in range(m):
             s[i] += EPS
             fp = self.f(u, s).copy()
             s[i] -= EPS * 2
             fm = self.f(u, s).copy()
             s[i] += EPS
-            dfds[:,:,i] = (fp - fm).reshape([N, n]) / (2 * EPS)
+            dfds[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
         return dfds
 
 
 class LSS(object):
-    '''
+    """
     Base class for both tangent and adjoint sensitivity analysis
     During __init__, a trajectory is computed,
     and the matrices used for both tangent and adjoint are built
-    '''
+    """
     def __init__(self, f, u0, s, t, dfdu=None):
         self.f = f
         self.t = np.array(t, float).copy()
@@ -169,11 +195,11 @@ class LSS(object):
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
     def Schur(self, alpha):
-        '''
+        """
         Builds the Schur complement of the KKT system'
         Also build B: the block-bidiagonal matrix,
                and E: the dudt matrix
-        '''
+        """
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
         halfJ = 0.5 * self.dfdu(self.uMid, self.s)
@@ -195,18 +221,19 @@ class LSS(object):
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
         wb = np.ones(m) * wb[:,np.newaxis]
         self.wBinv = _diag(np.ravel(1./ wb))
-        self.wEinv = alpha**2 * _diag(1./ dtFrac)
+        we = dtFrac * alpha**2
+        self.wEinv = _diag(1./ we)
 
         return (self.B * self.wBinv * self.B.T) + \
                (self.E * self.wEinv * self.E.T)
 
     def evaluate(self, J):
-        'Evaluate a time averaged objective function'
+        """Evaluate a time averaged objective function"""
         return J(self.u, self.s).mean(0)
 
 
 class Tangent(LSS):
-    '''
+    """
     Tagent(f, u0, s, t, dfds=None, dfdu=None, alpha=10)
     f: governing equation du/dt = f(u, s)
     u0: initial condition (1d array) or the entire trajectory (2d array)
@@ -214,7 +241,7 @@ class Tangent(LSS):
     t: time (1d array).  t[0] is run up time from initial condition.
     dfds and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
-    '''
+    """
     def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=10):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
@@ -232,11 +259,13 @@ class Tangent(LSS):
         self.eta = self.wEinv * (self.E.T * w)
 
     def dJds(self, J, T0skip=0, T1skip=0):
-        'Evaluate the derivative of the time averaged objective function to s'
-        dJdu, dJds = ddu(J), dds(J)
+        """Evaluate the derivative of the time averaged objective function to s
+        """
+        pJpu, pJps = ddu(J), dds(J)
 
         n0 = (self.t < self.t[0] + T0skip).sum()
         n1 = (self.t <= self.t[-1] - T1skip).sum()
+        assert n0 < n1
 
         u, v = self.u[n0:n1], self.v[n0:n1]
         uMid, eta = self.uMid[n0:n1-1], self.eta[n0:n1-1]
@@ -244,17 +273,15 @@ class Tangent(LSS):
         J0 = J(uMid, self.s)
         J0 = J0.reshape([uMid.shape[0], -1])
 
-        Jp = J(u + EPS * v, self.s).mean(0)
-        Jm = J(u - EPS * v, self.s).mean(0)
-        grad1 = (Jp - Jm) / (2*EPS) \
+        grad1 = (pJpu(u, self.s) * v[:,np.newaxis,:]).sum(2).mean(0) \
               - (eta[:,np.newaxis] * (J0 - J0.mean(0))).mean(0)
 
-        grad2 = dJds(uMid, self.s).mean(0)
+        grad2 = pJps(uMid, self.s)[:,:,0].mean(0)
         return np.ravel(grad1 + grad2)
 
 
 class Adjoint(LSS):
-    '''
+    """
     Adjoint(f, u0, s, t, J, dJdu=None, dfdu=None, alpha=10)
     f: governing equation du/dt = f(u, s)
     u0: initial condition (1d array) or the entire trajectory (2d array)
@@ -263,7 +290,7 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
-    '''
+    """
     def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, alpha=10):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
@@ -285,12 +312,13 @@ class Adjoint(LSS):
         self.J, self.dJdu = J, dJdu
 
     def evaluate(self):
-        'Evaluate the time averaged objective function'
+        """Evaluate the time averaged objective function"""
         # return self.J(self.u, self.s).mean(0)
         return LSS.evaluate(self, self.J)
 
     def dJds(self, dfds=None, dJds=None, T0skip=0, T1skip=0):
-        'Evaluate the derivative of the time averaged objective function to s'
+        """Evaluate the derivative of the time averaged objective function to s
+        """
         if dfds is None:
             dfds = dds(self.f)
         if dJds is None:
@@ -308,7 +336,7 @@ class Adjoint(LSS):
 
 
 class lssSolver(LSS):
-    '''
+    """
     lssSolver(f, u0, s, t, dfds=None, dfdu=None, alpha=10)
     f: governing equation du/dt = f(u, s)
     u0: initial condition (1d array) or the entire trajectory (2d array)
@@ -316,13 +344,15 @@ class lssSolver(LSS):
     t: time (1d array).  t[0] is run up time from initial condition.
     dfds and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
-    '''
+    """
     def __init__(self, f, u0, s, t, dfdu=None, alpha=10):
         LSS.__init__(self, f, u0, s, t, dfdu)
         self.alpha = alpha
 
 
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
+        """Compute a new nonlinear solution at a different s.
+        This one becomes the reference solution for the next call"""
         Smat = self.Schur(self.alpha)
 
         s = np.array(s, float).copy()

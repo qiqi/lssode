@@ -7,10 +7,12 @@ from numpy import *
 sys.path.append('..')
 from lssode import *
 
+set_fd_step(1E-30j)
+
 def vanderpol(u, mu):
     shp = u.shape
     u = u.reshape([-1,2])
-    dudt = zeros(u.shape)
+    dudt = zeros(u.shape, u.dtype)
     dudt[:,0] = u[:,1]
     dudt[:,1] = -u[:,0] + mu * (1 - u[:,0]**2) * u[:,1]
     return dudt.reshape(shp)
