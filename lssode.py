@@ -221,7 +221,8 @@ class LSS(object):
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
         wb = np.ones(m) * wb[:,np.newaxis]
         self.wBinv = _diag(np.ravel(1./ wb))
-        self.wEinv = alpha**2 * _diag(1./ dtFrac)
+        we = dtFrac * alpha**2
+        self.wEinv = _diag(1./ we)
 
         return (self.B * self.wBinv * self.B.T) + \
                (self.E * self.wEinv * self.E.T)
@@ -260,10 +261,11 @@ class Tangent(LSS):
     def dJds(self, J, T0skip=0, T1skip=0):
         """Evaluate the derivative of the time averaged objective function to s
         """
-        dJdu, dJds = ddu(J), dds(J)
+        pJpu, pJps = ddu(J), dds(J)
 
         n0 = (self.t < self.t[0] + T0skip).sum()
         n1 = (self.t <= self.t[-1] - T1skip).sum()
+        assert n0 < n1
 
         u, v = self.u[n0:n1], self.v[n0:n1]
         uMid, eta = self.uMid[n0:n1-1], self.eta[n0:n1-1]
@@ -271,10 +273,10 @@ class Tangent(LSS):
         J0 = J(uMid, self.s)
         J0 = J0.reshape([uMid.shape[0], -1])
 
-        grad1 = (dJdu(u, self.s) * v[:,np.newaxis,:]).sum(2).mean(0) \
+        grad1 = (pJpu(u, self.s) * v[:,np.newaxis,:]).sum(2).mean(0) \
               - (eta[:,np.newaxis] * (J0 - J0.mean(0))).mean(0)
 
-        grad2 = dJds(uMid, self.s).mean(0)
+        grad2 = pJps(uMid, self.s)[:,:,0].mean(0)
         return np.ravel(grad1 + grad2)
 
 
@@ -349,6 +351,8 @@ class lssSolver(LSS):
 
 
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
+        """Compute a new nonlinear solution at a different s.
+        This one becomes the reference solution for the next call"""
         Smat = self.Schur(self.alpha)
 
         s = np.array(s, float).copy()
