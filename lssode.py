@@ -112,6 +112,7 @@ class ddu(object):
         self.f = f
 
     def __call__(self, u, s):
+        global EPS
         f0 = self.f(u, s)
         assert f0.shape[0] == u.shape[0]
         N = f0.shape[0]
@@ -141,6 +142,7 @@ class dds(object):
         self.f = f
 
     def __call__(self, u, s):
+        global EPS
         f0 = self.f(u, s)
         assert f0.shape[0] == u.shape[0]
         N = f0.shape[0]
