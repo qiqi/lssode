@@ -104,9 +104,9 @@ class ddu(object):
     """Partial derivative of a bivariate function f(u,s)
     with respect its FIRST argument u
 
-    Usage: print ddu(f)(u,s)
+    Usage: print(ddu(f)(u,s))
     Or: dfdu = ddu(f)
-        print dfdu(u,s)
+        print(dfdu(u,s))
     """
     def __init__(self, f):
         self.f = f
@@ -134,9 +134,9 @@ class dds(object):
     """Partial derivative of a bivariate function f(u,s)
     with respect its SECOND argument s
 
-    Usage: print dds(f)(u,s)
+    Usage: print(dds(f)(u,s))
     Or: dfds = dds(f)
-        print dfds(u,s)
+        print(dfds(u,s))
     """
     def __init__(self, f):
         self.f = f
@@ -389,7 +389,7 @@ class lssSolver(LSS):
             b = self.dudt - self.f(self.uMid, s)
             norm_b = np.linalg.norm(np.ravel(b))
             if disp:
-                print 'iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0
+                print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
             if norm_b < atol or norm_b < rtol * norm_b0:
                 return self.t, self.u
 
@@ -397,4 +397,4 @@ class lssSolver(LSS):
             Smat = self.Schur(self.alpha)
 
         # did not meet tolerance, error message
-        print 'lssSolve: Newton solver did not converge in {0} iterations'
+        print('lssSolve: Newton solver did not converge in {0} iterations')

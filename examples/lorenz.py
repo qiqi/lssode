@@ -25,7 +25,7 @@ dt = 0.01
 tangent = []
 adjoint = []
 for rho in rhos:
-    print rho
+    print(rho)
     for i in range(11):
         T = 20
         if i == 10: T = 200
@@ -59,5 +59,4 @@ xlabel(r'$\rho$')
 ylabel(r'$d\overline{J}/d\rho$')
 
 show()
-
 

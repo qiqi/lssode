@@ -24,7 +24,7 @@ solver = lssSolver(lorenz, x0, rhos[0], t)
 u, t = [solver.u.copy()], [solver.t.copy()]
 
 for rho in rhos[1:]:
-    print 'rho = ', rho
+    print('rho = ', rho)
     solver.lss(rho)
     u.append(solver.u.copy())
     t.append(solver.t.copy())

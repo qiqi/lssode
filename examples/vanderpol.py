@@ -26,7 +26,7 @@ dt = 0.01
 tangent = []
 adjoint = []
 for mu in mus:
-    print mu
+    print(mu)
     for i in range(11):
         T = 20
         if i == 10: T = 200
