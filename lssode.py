@@ -351,7 +351,6 @@ class lssSolver(LSS):
         LSS.__init__(self, f, u0, s, t, dfdu)
         self.alpha = alpha
 
-
     def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
         """Compute a new nonlinear solution at a different s.
         This one becomes the reference solution for the next call"""
