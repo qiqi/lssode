@@ -35,7 +35,7 @@ if CASE == 'vanderpol':
     
     for mu in mus[1:]:
         print('mu = ', mu)
-        solver.lss(mu)
+        solver.lss(mu, disp=True)
         u.append(solver.u.copy())
         t.append(solver.t.copy())
     
@@ -61,7 +61,7 @@ elif CASE == 'lorenz':
     
     for rho in rhos[1:]:
         print('rho = ', rho)
-        solver.lss(rho)
+        solver.lss(rho, disp=True)
         u.append(solver.u.copy())
         t.append(solver.t.copy())
     

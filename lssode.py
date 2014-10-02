@@ -351,7 +351,11 @@ class lssSolver(LSS):
         LSS.__init__(self, f, u0, s, t, dfdu)
         self.alpha = alpha
 
-    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
+        # store the reference solution
+        self.ur = self.u.copy()
+        self.dtr = self.dt.copy()
+
+    def lss(self, s, maxIter=10, atol=1E-7, rtol=1E-4, disp=False):
         """Compute a new nonlinear solution at a different s.
         This one becomes the reference solution for the next call"""
         Smat = self.Schur(self.alpha)
@@ -363,6 +367,7 @@ class lssSolver(LSS):
         self.s = s
 
         # compute initial matrix and right hand side
+        w = np.zeros(self.dudt.size)
         b = self.dudt - self.f(self.uMid, s)
         norm_b0 = np.linalg.norm(np.ravel(b))
 
@@ -370,15 +375,16 @@ class lssSolver(LSS):
 
         for iNewton in range(maxIter):
             # solve
-            w = splinalg.spsolve(Smat, np.ravel(b))
+            dw = splinalg.spsolve(Smat, np.ravel(b))
+            w = w + 0.2 * dw
             v = self.wBinv * (self.B.T * w)
 
             v = v.reshape(self.u.shape)
             eta = self.wEinv * (self.E.T * w)
 
             # update solution and dt
-            self.u -= v
-            self.dt *= np.exp(eta)
+            self.u = self.ur - v
+            self.dt = self.dtr * np.exp(eta)
 
             self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
             self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
@@ -396,4 +402,4 @@ class lssSolver(LSS):
             Smat = self.Schur(self.alpha)
 
         # did not meet tolerance, error message
-        print('lssSolve: Newton solver did not converge in {0} iterations')
+        print('lssSolve: Newton solver did not converge in {0} iterations'.format(maxIter))
