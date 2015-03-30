@@ -240,7 +240,7 @@ class LSS(object):
 
 class Tangent(LSS):
     """
-    Tagent(f, u0, s, t, dfds=None, dfdu=None, alpha=0)
+    Tagent(f, u0, s, t, dfds=None, dfdu=None, alpha=10)
     f: governing equation du/dt = f(u, s)
     u0: initial condition (1d array) or the entire trajectory (2d array)
     s: parameter
@@ -248,7 +248,7 @@ class Tangent(LSS):
     dfds and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
     """
-    def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=0):
+    def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=10):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur(alpha)
