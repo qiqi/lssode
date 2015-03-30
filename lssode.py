@@ -196,7 +196,7 @@ class LSS(object):
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
-    def Schur(self, alpha):
+    def Schur(self, alpha=0):
         """
         Builds the Schur complement of the KKT system'
         Also build B: the block-bidiagonal matrix,
@@ -216,18 +216,22 @@ class LSS(object):
                                 shape=(N*m, (N+1)*m))
     
         self.B = DDT.tocsr() - L.tocsr()
-        self.E = _block_diag(self.dudt[:,:,np.newaxis]).tocsr()
 
         # the diagonal weights
         dtFrac = self.dt / (self.t[-1] - self.t[0])
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
         wb = np.ones(m) * wb[:,np.newaxis]
         self.wBinv = _diag(np.ravel(1./ wb))
-        we = dtFrac * alpha**2
-        self.wEinv = _diag(1./ we)
 
-        return (self.B * self.wBinv * self.B.T) + \
-               (self.E * self.wEinv * self.E.T)
+        S = self.B * self.wBinv * self.B.T
+
+        if alpha > 0:
+            self.E = _block_diag(self.dudt[:,:,np.newaxis]).tocsr()
+            we = dtFrac * alpha**2
+            self.wEinv = _diag(1./ we)
+            S = S + self.E * self.wEinv * self.E.T
+
+        return S
 
     def evaluate(self, J):
         """Evaluate a time averaged objective function"""
@@ -236,7 +240,7 @@ class LSS(object):
 
 class Tangent(LSS):
     """
-    Tagent(f, u0, s, t, dfds=None, dfdu=None, alpha=10)
+    Tagent(f, u0, s, t, dfds=None, dfdu=None, alpha=0)
     f: governing equation du/dt = f(u, s)
     u0: initial condition (1d array) or the entire trajectory (2d array)
     s: parameter
@@ -244,7 +248,7 @@ class Tangent(LSS):
     dfds and dfdu is computed from f if left undefined.
     alpha: weight of the time dilation term in LSS.
     """
-    def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=10):
+    def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=0):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur(alpha)
@@ -258,9 +262,37 @@ class Tangent(LSS):
         v = self.wBinv * (self.B.T * w)
 
         self.v = v.reshape(self.u.shape)
-        self.eta = self.wEinv * (self.E.T * w)
+        if alpha > 0:
+            self.eta = self.wEinv * (self.E.T * w)
+        else:
+            self.eta = None
 
-    def dJds(self, J, T0skip=0, T1skip=0):
+    def dJds(self, J, *args, **argv):
+        if self.eta is None:
+            return self.dJds_windowing(J, *args, **argv)
+        else:
+            return self.dJds_time_dilation(J, *args, **argv)
+
+    def dJds_windowing(self, J, window='cos2'):
+        if window == 'cos':
+            s = (self.t - self.t[0]) / (self.t[-1] - self.t[0]) * 2 * np.pi
+            win = 1 - np.cos(s)
+        elif window == 'cos2':
+            s = (self.t - self.t[0]) / (self.t[-1] - self.t[0]) * 2 * np.pi
+            win = (1 - np.cos(s))**2
+
+        win /= win.sum()
+        winMid = 0.5 * (win[1:] + win[:-1])
+
+        pJpu, pJps = ddu(J), dds(J)
+
+        pJpuTimesV = (pJpu(self.u, self.s) * self.v[:,np.newaxis,:]).sum(2)
+        grad1 = np.dot(win, pJpuTimesV)
+
+        grad2 = np.dot(winMid, pJps(self.uMid, self.s)[:,:,0])
+        return np.ravel(grad1 + grad2)
+
+    def dJds_time_dilation(self, J, T0skip=0, T1skip=0):
         """Evaluate the derivative of the time averaged objective function to s
         """
         pJpu, pJps = ddu(J), dds(J)
