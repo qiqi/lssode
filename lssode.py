@@ -58,14 +58,6 @@ Using adjoint sensitivity analysis:
         dJds = adj.dJds()
         # you can use the same "adj" for more "s"s
         #     via adj.dJds(dfds, dJds)... See doc for the Adjoint class
-
-Using nonlinear LSS solver:
-        u0 = rand(m)      # initial condition of m-degree-of-freedom system
-        t = linspace(T0, T1, N)    # 0-T0 is spin up time (starting from u0).
-        solver = lssSolver(f, u0, s0, t)
-        # (solver.t, solver.u) is the solution of initial value problem at s0
-        solver.lss(s1)
-        # (solver.t, solver.u) is the solution of a LSS problem at s
 """
 
 import numpy as np
@@ -74,7 +66,7 @@ from scipy.integrate import odeint
 import scipy.sparse.linalg as splinalg
 
 
-__all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint", "lssSolver"]
+__all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint"]
 
 
 def _diag(a):
@@ -196,11 +188,10 @@ class LSS(object):
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
-    def Schur(self, alpha):
+    def Schur(self):
         """
         Builds the Schur complement of the KKT system'
-        Also build B: the block-bidiagonal matrix,
-               and E: the dudt matrix
+        Also build B: the block-bidiagonal matrix
         """
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
@@ -216,38 +207,35 @@ class LSS(object):
                                 shape=(N*m, (N+1)*m))
     
         self.B = DDT.tocsr() - L.tocsr()
-        self.E = _block_diag(self.dudt[:,:,np.newaxis]).tocsr()
 
         # the diagonal weights
         dtFrac = self.dt / (self.t[-1] - self.t[0])
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
         wb = np.ones(m) * wb[:,np.newaxis]
         self.wBinv = _diag(np.ravel(1./ wb))
-        we = dtFrac * alpha**2
-        self.wEinv = _diag(1./ we)
 
-        return (self.B * self.wBinv * self.B.T) + \
-               (self.E * self.wEinv * self.E.T)
+        return (self.B * self.wBinv * self.B.T)
 
     def evaluate(self, J):
         """Evaluate a time averaged objective function"""
-        return J(self.u, self.s).mean(0)
+        win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
+        win /= win.mean()
+        return (J(self.u, self.s) * win).mean(0)
 
 
 class Tangent(LSS):
     """
-    Tagent(f, u0, s, t, dfds=None, dfdu=None, alpha=10)
+    Tagent(f, u0, s, t, dfds=None, dfdu=None)
     f: governing equation du/dt = f(u, s)
     u0: initial condition (1d array) or the entire trajectory (2d array)
     s: parameter
     t: time (1d array).  t[0] is run up time from initial condition.
     dfds and dfdu is computed from f if left undefined.
-    alpha: weight of the time dilation term in LSS.
     """
-    def __init__(self, f, u0, s, t, dfds=None, dfdu=None, alpha=10):
+    def __init__(self, f, u0, s, t, dfds=None, dfdu=None):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
-        Smat = self.Schur(alpha)
+        Smat = self.Schur()
 
         if dfds is None:
             dfds = dds(f)
@@ -258,7 +246,6 @@ class Tangent(LSS):
         v = self.wBinv * (self.B.T * w)
 
         self.v = v.reshape(self.u.shape)
-        self.eta = self.wEinv * (self.E.T * w)
 
     def dJds(self, J, T0skip=0, T1skip=0):
         """Evaluate the derivative of the time averaged objective function to s
@@ -270,13 +257,16 @@ class Tangent(LSS):
         assert n0 < n1
 
         u, v = self.u[n0:n1], self.v[n0:n1]
-        uMid, eta = self.uMid[n0:n1-1], self.eta[n0:n1-1]
+        uMid = self.uMid[n0:n1-1]
 
         J0 = J(uMid, self.s)
         J0 = J0.reshape([uMid.shape[0], -1])
 
-        grad1 = (pJpu(u, self.s) * v[:,np.newaxis,:]).sum(2).mean(0) \
-              - (eta[:,np.newaxis] * (J0 - J0.mean(0))).mean(0)
+        win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
+        win /= win.mean()
+
+        grad1 = ((pJpu(u, self.s) * v[:,np.newaxis,:]).sum(2) \
+                * win[:,np.newaxis]).mean(0)
 
         grad2 = pJps(uMid, self.s)[:,:,0].mean(0)
         return np.ravel(grad1 + grad2)
@@ -284,30 +274,29 @@ class Tangent(LSS):
 
 class Adjoint(LSS):
     """
-    Adjoint(f, u0, s, t, J, dJdu=None, dfdu=None, alpha=10)
+    Adjoint(f, u0, s, t, J, dJdu=None, dfdu=None)
     f: governing equation du/dt = f(u, s)
     u0: initial condition (1d array) or the entire trajectory (2d array)
     s: parameter
     t: time (1d array).  t[0] is run up time from initial condition.
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
-    alpha: weight of the time dilation term in LSS.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, alpha=10):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
-        Smat = self.Schur(alpha)
+        Smat = self.Schur()
 
-        J0 = J(self.uMid, self.s)
-        assert J0.ndim == 1
-        h = -(J0 - J0.mean()) / J0.size            # multiplier on eta
+        win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
+        win /= win.mean()
 
         if dJdu is None:
             dJdu = ddu(J)
-        g = dJdu(self.u, self.s) / self.u.shape[0]  # multiplier on v
+        g = (dJdu(self.u, self.s) * win[:,np.newaxis,np.newaxis]) \
+                / self.u.shape[0]  # multiplier on v
         assert g.size == self.u.size
 
-        b = self.E * (self.wEinv * h) + self.B * (self.wBinv * np.ravel(g))
+        b = self.B * (self.wBinv * np.ravel(g))
         wa = splinalg.spsolve(Smat, b)
 
         self.wa = wa.reshape(self.uMid.shape)
@@ -336,64 +325,3 @@ class Adjoint(LSS):
         grad2 = dJds(self.uMid, self.s).mean(0)
         return np.ravel(grad1 + grad2)
 
-
-class lssSolver(LSS):
-    """
-    lssSolver(f, u0, s, t, dfds=None, dfdu=None, alpha=10)
-    f: governing equation du/dt = f(u, s)
-    u0: initial condition (1d array) or the entire trajectory (2d array)
-    s: parameter
-    t: time (1d array).  t[0] is run up time from initial condition.
-    dfds and dfdu is computed from f if left undefined.
-    alpha: weight of the time dilation term in LSS.
-    """
-    def __init__(self, f, u0, s, t, dfdu=None, alpha=10):
-        LSS.__init__(self, f, u0, s, t, dfdu)
-        self.alpha = alpha
-
-    def lss(self, s, maxIter=8, atol=1E-7, rtol=1E-4, disp=False):
-        """Compute a new nonlinear solution at a different s.
-        This one becomes the reference solution for the next call"""
-        Smat = self.Schur(self.alpha)
-
-        s = np.array(s, float).copy()
-        if s.ndim == 0:
-            s = s[np.newaxis]
-        assert s.shape == self.s.shape
-        self.s = s
-
-        # compute initial matrix and right hand side
-        b = self.dudt - self.f(self.uMid, s)
-        norm_b0 = np.linalg.norm(np.ravel(b))
-
-        Smat = self.Schur(self.alpha)
-
-        for iNewton in range(maxIter):
-            # solve
-            w = splinalg.spsolve(Smat, np.ravel(b))
-            v = self.wBinv * (self.B.T * w)
-
-            v = v.reshape(self.u.shape)
-            eta = self.wEinv * (self.E.T * w)
-
-            # update solution and dt
-            self.u -= v
-            self.dt *= np.exp(eta)
-
-            self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
-            self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
-            self.t[1:] = self.t[0] + np.cumsum(self.dt)
-
-            # recompute residual
-            b = self.dudt - self.f(self.uMid, s)
-            norm_b = np.linalg.norm(np.ravel(b))
-            if disp:
-                print('iteration, norm_b, norm_b0 ', iNewton, norm_b, norm_b0)
-            if norm_b < atol or norm_b < rtol * norm_b0:
-                return self.t, self.u
-
-            # recompute matrix
-            Smat = self.Schur(self.alpha)
-
-        # did not meet tolerance, error message
-        print('lssSolve: Newton solver did not converge in {0} iterations')

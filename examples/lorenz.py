@@ -20,7 +20,7 @@ def obj(u, r):
     return u[:,2]
 
 rhos = linspace(25, 34, 10)
-dt = 0.01
+dt = 0.0025
 
 tangent = []
 adjoint = []
