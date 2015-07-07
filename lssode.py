@@ -220,6 +220,8 @@ class LSS(object):
         """Evaluate a time averaged objective function"""
         win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
         win /= win.mean()
+        win = np.zeros(win.shape)
+        win[-1] = win.size
         return (J(self.u, self.s) * win).mean(0)
 
 
@@ -264,6 +266,8 @@ class Tangent(LSS):
 
         win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
         win /= win.mean()
+        win = np.zeros(win.shape)
+        win[-1] = win.size
 
         grad1 = ((pJpu(u, self.s) * v[:,np.newaxis,:]).sum(2) \
                 * win[:,np.newaxis]).mean(0)
@@ -289,6 +293,8 @@ class Adjoint(LSS):
 
         win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
         win /= win.mean()
+        win = np.zeros(win.shape)
+        win[-1] = win.size
 
         if dJdu is None:
             dJdu = ddu(J)
