@@ -1,11 +1,20 @@
 # Copyright Qiqi Wang (qiqi@mit.edu) 2013
 
 import sys
+import argparse
 from pylab import *
 from numpy import *
 
 sys.path.append('..')
 from lssode import *
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--rho', type=float, default=15)
+parser.add_argument('--time_span', type=float, default=10)
+parser.add_argument('--window_type', type=str, default='delta_end')
+args = parser.parse_args()
+
+print(args.time_span, args.window_type)
 
 set_fd_step(1E-30j)
 
@@ -27,14 +36,13 @@ def obj(u, r):
 
 dt = 0.0025
 
-rho = 13.
 T = 10
 
-t = 30 + dt * arange(int(T / dt))
+t = 30 + dt * arange(int(args.time_span / dt))
 
 x0 = random.rand(53)
-tan = Tangent(advect, x0, rho, t)
-print(tan.dJds(obj, window_type='delta_end'))
+tan = Tangent(advect, x0, args.rho, t)
+print(tan.dJds(obj, window_type=args.window_type))
 
 subplot(1,2,1)
 contourf(tan.v, 100)
@@ -44,7 +52,7 @@ title('tangent')
 colorbar()
 
 x0 = random.rand(53)
-adj = Adjoint(advect, x0, rho, t, obj, window_type='delta_end')
+adj = Adjoint(advect, x0, args.rho, t, obj, window_type=args.window_type)
 print(adj.dJds())
 
 subplot(1,2,2)

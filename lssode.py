@@ -152,13 +152,18 @@ class dds(object):
         return dfds
 
 
-def window(n, window_type='sin_squared'):
+def window(n, window_type='sin2'):
     if window_type == 'square':
         win = ones(n)
     elif window_type == 'sin':
         win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])
-    elif window_type == 'sin_squared':
+    elif window_type == 'sin2':
         win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])**2
+    elif window_type == 'sin4':
+        win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])**4
+    elif window_type == 'bump':
+        x = np.linspace(-1, 1, n+2)[1:-1]
+        win = np.exp(-1 / (1 - x**2))
     elif window_type == 'delta_end':
         win = np.zeros(n)
         win[-1] = 1
@@ -230,7 +235,7 @@ class LSS(object):
 
         return (self.B * self.wBinv * self.B.T)
 
-    def evaluate(self, J, window_type='sin_squared'):
+    def evaluate(self, J, window_type='sin2'):
         """Evaluate a time averaged objective function"""
         win = window(self.u.shape[0], window_type)
         return (J(self.u, self.s) * win).mean(0)
@@ -260,7 +265,7 @@ class Tangent(LSS):
 
         self.v = v.reshape(self.u.shape)
 
-    def dJds(self, J, T0skip=0, T1skip=0, window_type='sin_squared'):
+    def dJds(self, J, T0skip=0, T1skip=0, window_type='sin2'):
         """Evaluate the derivative of the time averaged objective function to s
         """
         pJpu, pJps = ddu(J), dds(J)
@@ -293,7 +298,7 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin_squared'):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2'):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur()
@@ -302,8 +307,7 @@ class Adjoint(LSS):
             dJdu = ddu(J)
 
         win = window(self.u.shape[0], window_type)
-        g = (dJdu(self.u, self.s) * win[:,np.newaxis,np.newaxis]) \
-                / self.u.shape[0]  # multiplier on v
+        g = dJdu(self.u, self.s) * win[:,np.newaxis,np.newaxis]
         assert g.size == self.u.size
 
         b = self.B * (self.wBinv * np.ravel(g))
@@ -331,7 +335,7 @@ class Adjoint(LSS):
         uMid, wa = self.uMid[n0:n1-1], self.wa[n0:n1-1]
 
         prod = self.wa[:,:,np.newaxis] * dfds(self.uMid, self.s)
-        grad1 = prod.sum(0).sum(0)
+        grad1 = prod.sum(1).mean(0)
         grad2 = dJds(self.uMid, self.s).mean(0)
         return np.ravel(grad1 + grad2)
 
