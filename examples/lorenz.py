@@ -58,5 +58,8 @@ ylim([0, 1.5])
 xlabel(r'$\rho$')
 ylabel(r'$d\overline{J}/d\rho$')
 
+savefig('lorenz.png')
+savefig('lorenz.eps')
+
 show()
 

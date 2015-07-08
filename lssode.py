@@ -152,6 +152,20 @@ class dds(object):
         return dfds
 
 
+def window(n, window_type='sin_squared'):
+    if window_type == 'square':
+        win = ones(n)
+    elif window_type == 'sin':
+        win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])
+    elif window_type == 'sin_squared':
+        win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])**2
+    elif window_type == 'delta_end':
+        win = np.zeros(n)
+        win[-1] = 1
+    win /= win.mean()
+    return win
+
+
 class LSS(object):
     """
     Base class for both tangent and adjoint sensitivity analysis
@@ -216,12 +230,9 @@ class LSS(object):
 
         return (self.B * self.wBinv * self.B.T)
 
-    def evaluate(self, J):
+    def evaluate(self, J, window_type='sin_squared'):
         """Evaluate a time averaged objective function"""
-        win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
-        win /= win.mean()
-        win = np.zeros(win.shape)
-        win[-1] = win.size
+        win = window(self.u.shape[0], window_type)
         return (J(self.u, self.s) * win).mean(0)
 
 
@@ -249,7 +260,7 @@ class Tangent(LSS):
 
         self.v = v.reshape(self.u.shape)
 
-    def dJds(self, J, T0skip=0, T1skip=0):
+    def dJds(self, J, T0skip=0, T1skip=0, window_type='sin_squared'):
         """Evaluate the derivative of the time averaged objective function to s
         """
         pJpu, pJps = ddu(J), dds(J)
@@ -264,11 +275,7 @@ class Tangent(LSS):
         J0 = J(uMid, self.s)
         J0 = J0.reshape([uMid.shape[0], -1])
 
-        win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
-        win /= win.mean()
-        win = np.zeros(win.shape)
-        win[-1] = win.size
-
+        win = window(self.u.shape[0], window_type)
         grad1 = ((pJpu(u, self.s) * v[:,np.newaxis,:]).sum(2) \
                 * win[:,np.newaxis]).mean(0)
 
@@ -286,18 +293,15 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin_squared'):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur()
 
-        win = np.sin(np.linspace(0, np.pi, self.u.shape[0] + 2)[1:-1])**2
-        win /= win.mean()
-        win = np.zeros(win.shape)
-        win[-1] = win.size
-
         if dJdu is None:
             dJdu = ddu(J)
+
+        win = window(self.u.shape[0], window_type)
         g = (dJdu(self.u, self.s) * win[:,np.newaxis,np.newaxis]) \
                 / self.u.shape[0]  # multiplier on v
         assert g.size == self.u.size

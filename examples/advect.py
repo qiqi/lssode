@@ -34,20 +34,24 @@ t = 30 + dt * arange(int(T / dt))
 
 x0 = random.rand(53)
 tan = Tangent(advect, x0, rho, t)
+print(tan.dJds(obj, window_type='delta_end'))
 
-J = tan.evaluate(obj)
-print(tan.dJds(obj))
-
-figure()
+subplot(1,2,1)
 contourf(tan.v, 100)
+xlabel('space')
+ylabel('time')
+title('tangent')
 colorbar()
 
 x0 = random.rand(53)
-adj = Adjoint(advect, x0, rho, t, obj)
-
-J = adj.evaluate()
+adj = Adjoint(advect, x0, rho, t, obj, window_type='delta_end')
 print(adj.dJds())
 
-figure()
+subplot(1,2,2)
 contourf(adj.wa, 100)
+xlabel('space')
+ylabel('time')
+title('adjoint')
 colorbar()
+
+savefig('advect.png')
