@@ -60,7 +60,9 @@ Using adjoint sensitivity analysis:
         #     via adj.dJds(dfds, dJds)... See doc for the Adjoint class
 """
 
+import time
 import numpy as np
+import numpad as pad
 from scipy import sparse
 from scipy.integrate import odeint
 import scipy.sparse.linalg as splinalg
@@ -74,12 +76,6 @@ def _diag(a):
     assert a.ndim == 1
     n = a.size
     return sparse.csr_matrix((a, np.r_[:n], np.r_[:n+1]))
-
-def _block_diag(A):
-    """Construct a block diagonal sparse matrix, A[i,:,:] is the ith block"""
-    assert A.ndim == 3
-    n = A.shape[0]
-    return sparse.bsr_matrix((A, np.r_[:n], np.r_[:n+1]))
 
 
 EPS = 1E-7
@@ -95,7 +91,6 @@ def set_fd_step(eps):
 class ddu(object):
     """Partial derivative of a bivariate function f(u,s)
     with respect its FIRST argument u
-
     Usage: print(ddu(f)(u,s))
     Or: dfdu = ddu(f)
         print(dfdu(u,s))
@@ -120,6 +115,27 @@ class ddu(object):
             u[:,i] += EPS
             dfdu[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
         return dfdu
+
+
+class ddu_sparse(object):
+    """Sparse Jacobian of a bivariate function f(u,s)
+    with respect its FIRST argument u
+
+    Notes:
+    1. This functor returns sparse Jacobian
+    2. When u is a 2D array containing a list of states,
+       this functor returns a block diagonal matrix, whose
+       diagonal blocks are the Jacobians of all the states.
+
+    Usage: print(ddu(f)(u,s))
+    Or: dfdu = ddu(f)
+        print(dfdu(u,s))
+    """
+    def __init__(self, f):
+        self.f = f
+
+    def __call__(self, u, s):
+        return pad.diff_func(self.f, u, (s,))
 
 
 class dds(object):
@@ -178,6 +194,7 @@ class LSS(object):
     and the matrices used for both tangent and adjoint are built
     """
     def __init__(self, f, u0, s, t, dfdu=None):
+        t0 = time.time()
         self.f = f
         self.t = np.array(t, float).copy()
         self.s = np.array(s, float).copy()
@@ -186,7 +203,7 @@ class LSS(object):
             self.s = self.s[np.newaxis]
 
         if dfdu is None:
-            dfdu = ddu(f)
+            dfdu = ddu_sparse(f)
         self.dfdu = dfdu
 
         u0 = np.array(u0, float)
@@ -207,33 +224,38 @@ class LSS(object):
         self.uMid = 0.5 * (self.u[1:] + self.u[:-1])
         self.dudt = (self.u[1:] - self.u[:-1]) / self.dt[:,np.newaxis]
 
+        self._timing_ = {}
+        self._timing_['init'] = time.time() - t0
+
     def Schur(self):
         """
         Builds the Schur complement of the KKT system'
         Also build B: the block-bidiagonal matrix
         """
+        t0 = time.time()
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
-        halfJ = 0.5 * self.dfdu(self.uMid, self.s)
-        eyeDt = np.eye(m,m) / self.dt[:,np.newaxis,np.newaxis]
-    
-        L = sparse.bsr_matrix((halfJ, np.r_[1:N+1], np.r_[:N+1]) ) \
-          + sparse.bsr_matrix((halfJ, np.r_[:N], np.r_[:N+1]), \
-                              shape=(N*m, (N+1)*m))
-    
-        DDT = sparse.bsr_matrix((eyeDt, np.r_[1:N+1], np.r_[:N+1])) \
-            - sparse.bsr_matrix((eyeDt, np.r_[:N], np.r_[:N+1]), \
-                                shape=(N*m, (N+1)*m))
-    
-        self.B = DDT.tocsr() - L.tocsr()
+        halfJ = 0.5 * self.dfdu(self.uMid, self.s).tocsr()
+        eyeDt = _diag(np.kron(1./ self.dt, np.ones(m)))
 
+        B1 = -eyeDt - halfJ
+        B2 = eyeDt - halfJ
+        B1 = (B1.data, B1.indices, B1.indptr)
+        B2 = (B2.data, B2.indices + m, B2.indptr)
+        B1 = sparse.csr_matrix(B1, (N * m, (N + 1) * m))
+        B2 = sparse.csr_matrix(B2, (N * m, (N + 1) * m))
+        self.B = B1 + B2
+    
         # the diagonal weights
         dtFrac = self.dt / (self.t[-1] - self.t[0])
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
         wb = np.ones(m) * wb[:,np.newaxis]
         self.wBinv = _diag(np.ravel(1./ wb))
 
-        return (self.B * self.wBinv * self.B.T)
+        schur = self.B * self.wBinv * self.B.T
+
+        self._timing_['schur'] = time.time() - t0
+        return schur
 
     def evaluate(self, J, window_type='sin2'):
         """Evaluate a time averaged objective function"""
@@ -255,6 +277,7 @@ class Tangent(LSS):
 
         Smat = self.Schur()
 
+        t0 = time.time()
         if dfds is None:
             dfds = dds(f)
         b = dfds(self.uMid, self.s)
@@ -264,10 +287,12 @@ class Tangent(LSS):
         v = self.wBinv * (self.B.T * w)
 
         self.v = v.reshape(self.u.shape)
+        self._timing_['solve'] = time.time() - t0
 
     def dJds(self, J, T0skip=0, T1skip=0, window_type='sin2'):
         """Evaluate the derivative of the time averaged objective function to s
         """
+        t0 = time.time()
         pJpu, pJps = ddu(J), dds(J)
 
         n0 = (self.t < self.t[0] + T0skip).sum()
@@ -285,7 +310,11 @@ class Tangent(LSS):
                 * win[:,np.newaxis]).mean(0)
 
         grad2 = pJps(uMid, self.s)[:,:,0].mean(0)
-        return np.ravel(grad1 + grad2)
+        
+        grad = np.ravel(grad1 + grad2)
+
+        self._timing_['eval'] = time.time() - t0
+        return grad
 
 
 class Adjoint(LSS):
@@ -303,6 +332,7 @@ class Adjoint(LSS):
 
         Smat = self.Schur()
 
+        t0 = time.time()
         if dJdu is None:
             dJdu = ddu(J)
 
@@ -315,6 +345,7 @@ class Adjoint(LSS):
 
         self.wa = wa.reshape(self.uMid.shape)
         self.J, self.dJdu = J, dJdu
+        self._timing_['solve'] = time.time() - t0
 
     def evaluate(self):
         """Evaluate the time averaged objective function"""
@@ -324,6 +355,7 @@ class Adjoint(LSS):
     def dJds(self, dfds=None, dJds=None, T0skip=0, T1skip=0):
         """Evaluate the derivative of the time averaged objective function to s
         """
+        t0 = time.time()
         if dfds is None:
             dfds = dds(self.f)
         if dJds is None:
@@ -337,5 +369,8 @@ class Adjoint(LSS):
         prod = self.wa[:,:,np.newaxis] * dfds(self.uMid, self.s)
         grad1 = prod.sum(1).mean(0)
         grad2 = dJds(self.uMid, self.s).mean(0)
-        return np.ravel(grad1 + grad2)
+
+        grad = np.ravel(grad1 + grad2)
+        self._timing_['eval'] = time.time() - t0
+        return grad
 
