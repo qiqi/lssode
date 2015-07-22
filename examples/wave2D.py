@@ -27,10 +27,14 @@ def wave(u, rho):
 
     shp = u.shape
     u = u.reshape([-1, 2*Nx*Ny + 3]).T
+    N = u.shape[1] 
+    
     x, y, z = u[:3]
-    u = u[3:]
-    v1 = u[:Nx*Ny].reshape([u.shape[1],Nx,Ny])
-    v2 = u[Nx*Ny:].reshape([u.shape[1],Nx,Ny])
+    
+    v1,v2 = u[3:].reshape([2,Nx,Ny,N])
+    #u = u[3:]
+    #v1 = u[:Nx*Ny].reshape([Nx,Ny,N])
+    #v2 = u[Nx*Ny:].reshape([Nx,Ny,N])
     
     sigma, beta = 10, 8./3
     dxdt, dydt, dzdt = sigma*(y-x), x*(rho-z)-y, x*y - beta*z
@@ -38,73 +42,44 @@ def wave(u, rho):
     dv1dt = zeros(v1.shape, v1.dtype)
     dv2dt = zeros(v1.shape, v1.dtype)
 
-    dx,dy = 0.05,0.05
+    dx,dy = 0.1,0.1
 
     dv1dt = v2
+
+    v1_ext = zeros([Nx + 2,Ny + 2,N], v1.dtype)
+    v1_ext[1:-1,1:-1] = v1
 
     #left BC: dirchlet with lorenz z varible u(0,t)=z(t) over zrng, 0 otherwise
     zrng = arange(int(0.25*Ny),int(0.75*Ny)+1)
     lgt = zrng.shape[0]
+    
+    v1_ext[0,zrng+1] = z[newaxis]
+   
+    #right BC:
+    v1_ext[-1,1:-1] = v1[-1,:] - dx * v2[-1,:]
 
-    dv2dt[:,0,1:-1] = alpha2 * (v1[:,1,1:-1] - 2 * v1[:,0,1:-1]) / dx**2 \
-                  + alpha2 * (v1[:,0,2:] - 2 * v1[:,0,1:-1] + v1[:,0,:-2]) / dy**2
+    # top:
+    v1_ext[1:-1,-1] = v1[:,-1] - dy * v2[:,-1]
 
-
-    dv2dt[:,0,zrng] = alpha2 * (v1[:,1,zrng] - 2 * v1[:,0,zrng] + z[:,newaxis] * ones([u.shape[1],lgt])) / dx**2 \
-                  + alpha2 * (v1[:,0,zrng+1] - 2 * v1[:,0,zrng] + v1[:,0,zrng-1]) / dy**2
-
-
+    # bottom:
+    v1_ext[1:-1,0] = v1[:,0] - dy * v2[:,0]
 
     #interior domain
-    dv2dt[:,1:-1,1:-1] = alpha2 * (v1[:,2:,1:-1] - 2 * v1[:,1:-1,1:-1] + v1[:,:-2,1:-1]) / dx**2 \
-                     + alpha2 * (v1[:,1:-1,2:] - 2 * v1[:,1:-1,1:-1] + v1[:,1:-1,:-2]) / dy**2
-
-
-    #right BC: 
-    # robin: delta * u(N*dx,t) + gamma * ux(N*dx,t) = 0
-    # delta = 0.0
-    # gamma = 1.0
-    #dy2dt[-1] = alpha2 * ((-1-dx*delta/gamma)*v1[-1] + v1[-2]) / dx**2 # robin
-    
-    #dirchlet
-    #dy2dt[-1] = alpha2 * (-2*v1[-1] + v1[-2]) / dx**2     
-    
-    #ux(1) = -ut(1) #dissipate all KE
-    dv2dt[:,-1,1:-1] = alpha2 * (-1.0*dx*v2[:,-1,1:-1]-v1[:,-1,1:-1] + v1[:,-2,1:-1]) / dx**2 \
-                   + alpha2 * (v1[:,-1,2:] - 2 * v1[:,-1,1:-1] + v1[:,-1,:-2]) / dy**2
-
-    # top
-    dv2dt[:,1:-1,-1] = alpha2 * (v1[:,2:,-1] - 2 * v1[:,1:-1,-1] + v1[:,:-2,-1]) / dx**2 \
-                   + alpha2 * (-1.0*dy*v2[:,1:-1,-1]-v1[:,1:-1,-1] + v1[:,1:-1,-2]) / dy**2 
-
-    # bottom
-    dv2dt[:,1:-1,0] = alpha2 * (v1[:,2:,0] - 2 * v1[:,1:-1,0] + v1[:,:-2,0]) / dx**2 \
-                  + alpha2 * (-1.0*dy*v2[:,1:-1,0]-v1[:,1:-1,0] + v1[:,1:-1,1]) / dy**2
-    # top right
-    dv2dt[:,-1,-1] = alpha2 * (-1.0*dx*v2[:,-1,-1]-v1[:,-1,-1] + v1[:,-2,-1]) / dx**2 \
-                 + alpha2 * (-1.0*dy*v2[:,-1,-1]-v1[:,-1,-1] + v1[:,-1,-2]) / dy**2
-
-    # bottom right
-    dv2dt[:,-1,0] = alpha2 * (-1.0*dx*v2[:,-1,-1]-v1[:,-1,-1] + v1[:,-2,-1]) / dx**2 \
-                + alpha2 * (-1.0*dy*v2[:,-1,0]-v1[:,-1,0] + v1[:,-1,1]) / dy**2
-    
-    # top left
-    dv2dt[:,0,-1] = alpha2 * (v1[:,1,-1] - 2 * v1[:,0,-1]) / dx**2 \
-                + alpha2 * (-1.0*dy*v2[:,0,-1]-v1[:,0,-1] + v1[:,0,-2]) / dy**2
-
-    # bottom left
-    dv2dt[:,0,0] = alpha2 * (v1[:,1,-1] - 2 * v1[:,0,-1]) / dx**2 \
-               + alpha2 * (-1.0*dy*v2[:,0,0]-v1[:,0,0] + v1[:,0,1]) / dy**2 
-
+    dv2dt = alpha2 * (v1_ext[2:,1:-1] - 2 * v1_ext[1:-1,1:-1] + v1_ext[:-2,1:-1]) / dx**2 \
+                     + alpha2 * (v1_ext[1:-1,2:] - 2 * v1_ext[1:-1,1:-1] + v1_ext[1:-1,:-2]) / dy**2
 
     # repack DOFs
-    dv1dt = dv1dt.reshape([Nx*Ny,u.shape[1]])
-    dv2dt = dv2dt.reshape([Nx*Ny,u.shape[1]])
+    dvdt = array([dv1dt,dv2dt]).reshape((2 * Nx * Ny, N))
+    dudt = transpose(vstack([[dxdt, dydt, dzdt], dvdt])).reshape(shp)
 
-    return transpose(vstack([[dxdt, dydt, dzdt], dv1dt, dv2dt])).reshape(shp)
+    #dvdt = array([v1,v2]).reshape((2 * Nx * Ny, N))
+    #dudt = transpose(vstack([[x, y, z], dvdt])).reshape(shp)
+    
+    return dudt 
 
 def obj(u, r):
-    return u[:,3+Ny*int(Nx/2) + int(Ny/2)] 
+    return u[:,3+Ny*(Nx-1)] 
+    #return u[:,3+Ny*int(Nx/2) + int(Ny/2)] 
 
 def window(n, window_type='sin2'):
     if window_type == 'square':
@@ -125,8 +100,6 @@ def window(n, window_type='sin2'):
     return win
 
 
-
-
 m = 2*Nx*Ny+3
 
 dt = 0.0025
@@ -145,7 +118,7 @@ x0a = x0.copy()
 # TEST PRIMAL #
 ###############
 
-t = dt * arange(int(30/dt))
+t = dt * arange(int(20.0/dt))
 
 
 u0 = zeros(m)
@@ -165,8 +138,9 @@ f = lambda u, t : wave(u, args.rho)
 assert t[0] >= 0 and t.size > 1
 N0 = int(t[0] / (t[-1] - t[0]) * t.size)
 #u0 = x0.copy()
+print 'start run up'
 u0 = odeint(f, u0, np.linspace(0, t[0], N0+1))[-1]
-
+print ' start time history'
 # compute a trajectory
 u = odeint(f, u0, t - t[0])
 
@@ -174,11 +148,6 @@ u = odeint(f, u0, t - t[0])
 #utf = u[-1]
 #utf = transpose(utf[3:Nx*Ny+3].reshape([Nx,Ny]))
 #
-#contourf(utf, 100)
-#xlabel('x')
-#ylabel('y')
-#title('primal')
-#colorbar()
 #show()
 
 
@@ -189,6 +158,16 @@ u_slice = u[:,:,int(Ny/2)] # slice of y plane
 
 print u_slice.shape
 
+
+figure(1)
+contourf(transpose(u[-1]), 100)
+xlabel('x')
+ylabel('y')
+title('primal')
+colorbar()
+
+
+figure(2)
 contourf(u_slice, 100)
 xlabel('space (x)')
 ylabel('time')
@@ -197,6 +176,10 @@ colorbar()
 show()
 
 
+
+'''
+
+'''
 
 # produce video
 print 'starting post pro'
@@ -220,8 +203,8 @@ for i in arange(0,n,int(n/frm)):
     close()
     print i, '/', n ,' done'
     j = j + 1
-
-
+'''
+'''
 #########################################
 # COMPUTE AND PLOT CONVENTIONAL ADJOINT #
 #########################################
@@ -242,12 +225,13 @@ u0 = odeint(f, u0, np.linspace(0, t[0], N0+1))[-1]
 # compute a trajectory
 u = odeint(f, u0, t - t[0])
 
-
+print "build matrices"
 # build jacobians and time integration terms
-dfdu = ddu(wave)
+dfdu = ddu_sparse(wave)
 dt = t[1:] - t[:-1]
 uMid = 0.5 * (u[1:] + u[:-1])
 halfJ = 0.5 * dfdu(uMid, s)
+print halfJ.shape, type(halfJ)
 eyeDt = eye(m,m) / dt[:,newaxis,newaxis] 
 E = -eyeDt - halfJ
 G = eyeDt - halfJ
@@ -263,7 +247,7 @@ g = dJdu(u, s) * win[:,newaxis,newaxis]
 wa_c = zeros(uMid.shape)
 
 # loop BACKWARDS through everything...
-
+print "start adjoint"
 # last step
 wa_c[-1] = linalg.solve(G[-1].T,g[-1].T).squeeze()
 
@@ -285,12 +269,14 @@ grad_c = ravel(grad1 + grad2)
 print 'conventional: ', grad_c 
 
 del E,G,halfJ,eyeDt
-'''
+wa = wa_c
+grad_l = grad_c
 
 # LSS
-
+'''
 x0 = x0a
 adj = Adjoint(wave, x0, args.rho, t, obj, window_type=args.window_type)
+u = adj.u
 wa = adj.wa
 grad_l = adj.dJds()
 
@@ -301,4 +287,5 @@ print('lss: ', grad_l)
 n = t.shape[0]
 filename = "wave2D" + '_' + str(Nx) + '_' + str(Ny) + "_T" + str(args.time_span) + ".npz"
 # savez(filename, n=n, u=u, wa_c=wa_c, wa=wa, grad_c=grad_c, grad_l=grad_l)
-savez(filename, n=n, wa=wa, grad_l=grad_l)
+savez(filename, n=n, u=u, wa=wa, grad_l=grad_l)
+
