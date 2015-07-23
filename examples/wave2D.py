@@ -10,7 +10,7 @@ from lssode import *
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--rho', type=float, default=15.0)
-parser.add_argument('--time_span', type=float, default=2.0)
+parser.add_argument('--time_span', type=float, default=0.1)
 parser.add_argument('--window_type', type=str, default='delta_end')
 args = parser.parse_args()
 
@@ -279,6 +279,8 @@ grad_l = adj.dJds()
 print(adj._timing_)
 
 print('lss: ', grad_l)
+
+print adj.conv_hist
 
 n = t.shape[0]
 filename = "wave2D" + '_' + str(Nx) + '_' + str(Ny) + "_T" + str(args.time_span) + ".npz"

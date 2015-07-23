@@ -60,6 +60,7 @@ Using adjoint sensitivity analysis:
         #     via adj.dJds(dfds, dJds)... See doc for the Adjoint class
 """
 
+import sys
 import time
 import numpy as np
 import numpad as pad
@@ -68,7 +69,7 @@ from scipy.integrate import odeint
 import scipy.sparse.linalg as splinalg
 
 
-__all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint"]
+__all__ = ["ddu", "ddu_sparse", "dds", "set_fd_step", "Tangent", "Adjoint"]
 
 
 def _diag(a):
@@ -327,7 +328,7 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2'):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=100,tol=1e-8):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur()
@@ -341,11 +342,22 @@ class Adjoint(LSS):
         assert g.size == self.u.size
 
         b = self.B * (self.wBinv * np.ravel(g))
-        wa = splinalg.spsolve(Smat, b)
+        self.rhs = b
+
+        self.J, self.dJdu = J, dJdu
+
+        callback = Callback(self)
+        
+        
+        #wa = splinalg.spsolve(Smat, b)
+        wa0 = b
+        wa, info = splinalg.minres(Smat, b, x0 = wa0, maxiter=maxiter, tol=tol, callback=callback)
+
+        print type(wa)
 
         self.wa = wa.reshape(self.uMid.shape)
-        self.J, self.dJdu = J, dJdu
         self._timing_['solve'] = time.time() - t0
+        self.conv_hist = callback.hist
 
     def evaluate(self):
         """Evaluate the time averaged objective function"""
@@ -373,4 +385,26 @@ class Adjoint(LSS):
         grad = np.ravel(grad1 + grad2)
         self._timing_['eval'] = time.time() - t0
         return grad
+
+class Callback:
+    'convergence monitor'
+
+    def __init__(self,lss):
+        self.n = 0
+        self.lss=lss
+        self.hist = []
+
+
+    def __call__(self,x):
+        self.n += 1
+        if self.n == 1 or self.n % 10 == 0:
+            resnorm = np.linalg.norm(self.lss.rhs - self.lss.B * self.lss.wBinv * self.lss.B.T * x)
+            self.lss.wa = x.reshape(self.lss.uMid.shape)
+            grad = self.lss.dJds()
+            print('iter ', self.n, resnorm, grad[0])
+            self.hist.append([self.n, resnorm, grad[0]])
+
+        sys.stdout.flush()
+
+
 
