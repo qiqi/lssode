@@ -68,7 +68,7 @@ from scipy.integrate import odeint
 import scipy.sparse.linalg as splinalg
 
 
-__all__ = ["ddu", "dds", "set_fd_step", "Tangent", "Adjoint"]
+__all__ = ["ddu", "ddu_sparse", "dds", "set_fd_step", "Tangent", "Adjoint"]
 
 
 def _diag(a):
