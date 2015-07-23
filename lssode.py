@@ -328,7 +328,7 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=100,tol=1e-8):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=1000,tol=1e-8):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur()
