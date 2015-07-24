@@ -360,12 +360,13 @@ class Adjoint(LSS):
         
         #wa = splinalg.spsolve(Smat, b)
 
-        #x0 = np.random.rand(b.shape[0])
-        #b0 = Smat * x0
-        #x0 *= abs(b).max() / b0.std()
-        #wa0 = x0
-        wa0 = b
-        
+        x0 = np.random.rand(b.shape[0])
+        b0 = Smat * x0
+        x0 *= abs(b).max() / b0.std()
+        wa0 = x0
+        #wa0 = b
+        #wa0 = splinalg.spsolve(Smat, b)
+
         #pdb.set_trace()
         #callback(wa0)
         
@@ -378,9 +379,9 @@ class Adjoint(LSS):
         # M_x = lambda x: splinalg.spsolve(self.Spre,x)        
         M = splinalg.LinearOperator((wa0.size,wa0.size), M_x)
         
-        wa, info = splinalg.minres(Smat, b, x0 = wa0, maxiter=maxiter, M=M, tol=tol, callback=callback)
-        self.conv_hist = callback.hist
-        ''' 
+        #wa, info = splinalg.minres(Smat, b, x0 = wa0, maxiter=maxiter, M=M, tol=tol, callback=callback)
+        #self.conv_hist = callback.hist
+        #'''
         self.conv_hist = []
         for i in range(50):
             wa, info = splinalg.gmres(Smat, b, x0 = wa0, maxiter=20, M=M, tol=tol)
@@ -390,13 +391,15 @@ class Adjoint(LSS):
             grad = self.dJds()
             print('iter ', (i+1)*20, resnorm, grad[0])
             self.conv_hist.append([(i+1)*20, resnorm, grad[0]])
+            ''''
             plt.subplot(2,1,1)
             plt.plot(wa)
             plt.subplot(2,1,2)
             plt.plot(res)
             plt.show()
+            '''
             wa0 = wa.copy()
-        '''    
+        #'''     
 
         
         self.wa = wa.reshape(self.uMid.shape)
