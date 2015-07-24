@@ -61,6 +61,7 @@ Using adjoint sensitivity analysis:
 """
 
 import sys
+import pdb
 import time
 import numpy as np
 import numpad as pad
@@ -68,6 +69,7 @@ from scipy import sparse
 from scipy.integrate import odeint
 import scipy.sparse.linalg as splinalg
 
+import matplotlib.pyplot as plt
 
 __all__ = ["ddu", "ddu_sparse", "dds", "set_fd_step", "Tangent", "Adjoint"]
 
@@ -246,7 +248,14 @@ class LSS(object):
         B1 = sparse.csr_matrix(B1, (N * m, (N + 1) * m))
         B2 = sparse.csr_matrix(B2, (N * m, (N + 1) * m))
         self.B = B1 + B2
-    
+        
+        # preconditioner matrix containing main block diagonal
+        B1d = B1[:,:-m]
+        B2d = B2[:,m:]
+
+        self.Spre = B1d * B1d.T + B2d * B2d.T
+
+
         # the diagonal weights
         dtFrac = self.dt / (self.t[-1] - self.t[0])
         wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
@@ -328,7 +337,7 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=1000,tol=1e-8):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=10000,tol=1e-14):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur()
@@ -350,14 +359,48 @@ class Adjoint(LSS):
         
         
         #wa = splinalg.spsolve(Smat, b)
+
+        #x0 = np.random.rand(b.shape[0])
+        #b0 = Smat * x0
+        #x0 *= abs(b).max() / b0.std()
+        #wa0 = x0
         wa0 = b
-        wa, info = splinalg.minres(Smat, b, x0 = wa0, maxiter=maxiter, tol=tol, callback=callback)
+        
+        #pdb.set_trace()
+        #callback(wa0)
+        
+        #pdb.set_trace()
+        #print "starting minres"
+        #wa0 = 
+        
+        ilu = splinalg.spilu(self.Spre.tocsc())
+        M_x = lambda x: ilu.solve(x)
+        # M_x = lambda x: splinalg.spsolve(self.Spre,x)        
+        M = splinalg.LinearOperator((wa0.size,wa0.size), M_x)
+        
+        wa, info = splinalg.minres(Smat, b, x0 = wa0, maxiter=maxiter, M=M, tol=tol, callback=callback)
+        self.conv_hist = callback.hist
+        ''' 
+        self.conv_hist = []
+        for i in range(50):
+            wa, info = splinalg.gmres(Smat, b, x0 = wa0, maxiter=20, M=M, tol=tol)
+            res = self.rhs - Smat * wa 
+            resnorm = np.linalg.norm(res)
+            self.wa = wa.reshape(self.uMid.shape)
+            grad = self.dJds()
+            print('iter ', (i+1)*20, resnorm, grad[0])
+            self.conv_hist.append([(i+1)*20, resnorm, grad[0]])
+            plt.subplot(2,1,1)
+            plt.plot(wa)
+            plt.subplot(2,1,2)
+            plt.plot(res)
+            plt.show()
+            wa0 = wa.copy()
+        '''    
 
-        print type(wa)
-
+        
         self.wa = wa.reshape(self.uMid.shape)
         self._timing_['solve'] = time.time() - t0
-        self.conv_hist = callback.hist
 
     def evaluate(self):
         """Evaluate the time averaged objective function"""
@@ -398,11 +441,19 @@ class Callback:
     def __call__(self,x):
         self.n += 1
         if self.n == 1 or self.n % 10 == 0:
-            resnorm = np.linalg.norm(self.lss.rhs - self.lss.B * self.lss.wBinv * self.lss.B.T * x)
+            res = self.lss.rhs - self.lss.B * self.lss.wBinv * self.lss.B.T * x 
+            resnorm = np.linalg.norm(res)
             self.lss.wa = x.reshape(self.lss.uMid.shape)
             grad = self.lss.dJds()
             print('iter ', self.n, resnorm, grad[0])
             self.hist.append([self.n, resnorm, grad[0]])
+            
+            #plt.subplot(2,1,1)
+            #plt.plot(x.copy())
+            #plt.subplot(2,1,2)
+            #plt.plot(res.copy())
+            #plt.show()
+
 
         sys.stdout.flush()
 

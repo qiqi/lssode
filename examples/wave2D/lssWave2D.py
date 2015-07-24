@@ -39,3 +39,4 @@ n = t.shape[0]
 filename = "wave2D" + '_' + str(wave.Nx) + '_' + str(wave.Ny) + "_T" + str(args.time_span) + ".npz"
 savez(filename, n=n, u=u, wa=wa, grad_l=grad_l)
 
+
