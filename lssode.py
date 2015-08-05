@@ -170,25 +170,27 @@ class dds(object):
             dfds[:,:,i] = ((fp - fm).reshape([N, n]) / (2 * EPS)).real
         return dfds
 
-
-def window(n, window_type='sin2'):
+def window(n, window_type='sin2', n0=0, n1=0):
+    if n1 == 0:
+        n1 = n
+    
+    win = np.zeros(n)
+    n_obj = n1-n0
     if window_type == 'square':
-        win = ones(n)
+        win[n0:n1] = np.ones(n_obj)
     elif window_type == 'sin':
-        win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])
+        win[n0:n1] = np.sin(np.linspace(0, np.pi, n_obj+2)[1:-1])
     elif window_type == 'sin2':
-        win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])**2
+        win[n0:n1] = np.sin(np.linspace(0, np.pi, n_obj+2)[1:-1])**2
     elif window_type == 'sin4':
-        win = np.sin(np.linspace(0, np.pi, n+2)[1:-1])**4
+        win[n0:n1] = np.sin(np.linspace(0, np.pi, n_obj+2)[1:-1])**4
     elif window_type == 'bump':
-        x = np.linspace(-1, 1, n+2)[1:-1]
-        win = np.exp(-1 / (1 - x**2))
+        x = np.linspace(-1, 1, n_obj+2)[1:-1]
+        win[n0:n1] = np.exp(-1 / (1 - x**2))
     elif window_type == 'delta_end':
-        win = np.zeros(n)
         win[-1] = 1
     win /= win.mean()
     return win
-
 
 class LSS(object):
     """
@@ -235,6 +237,13 @@ class LSS(object):
         Builds the Schur complement of the KKT system'
         Also build B: the block-bidiagonal matrix
         """
+        # TODO: coarse schur, rhs?
+
+        # N_G = number of grids
+        # I_G = grid index, fine grid = 0
+        # offset = pow(2, I_G)
+        # make sure grids have 2^m + 1 time steps!
+
         t0 = time.time()
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
@@ -266,6 +275,8 @@ class LSS(object):
 
         self._timing_['schur'] = time.time() - t0
         return schur
+
+
 
     def evaluate(self, J, window_type='sin2'):
         """Evaluate a time averaged objective function"""
@@ -337,7 +348,7 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=10000,tol=1e-14):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=10000,tol=1e-14,T0skip=0, T1skip=0):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
         Smat = self.Schur()
@@ -346,7 +357,11 @@ class Adjoint(LSS):
         if dJdu is None:
             dJdu = ddu(J)
 
-        win = window(self.u.shape[0], window_type)
+        n0 = (self.t < self.t[0] + T0skip).sum()
+        n1 = (self.t <= self.t[-1] - T1skip).sum()
+        assert n0 < n1
+        
+        win = window(self.u.shape[0], window_type, n0=n0, n1=n1)
         g = dJdu(self.u, self.s) * win[:,np.newaxis,np.newaxis]
         assert g.size == self.u.size
 
@@ -358,30 +373,28 @@ class Adjoint(LSS):
         callback = Callback(self)
         
         
-        #wa = splinalg.spsolve(Smat, b)
+        wa = splinalg.spsolve(Smat, b)
+
+        '''
+        # Iterative Solver (restarted GMRES)
+        x01 = np.ones(self.uMid.shape) 
+        x02 = np.random.rand(self.uMid.shape[0]) 
+        
+        x01 = x01 * x02[:,np.newaxis]
+        x0 = x01.reshape(b.shape)
 
         x0 = np.random.rand(b.shape[0])
+        
         b0 = Smat * x0
         x0 *= abs(b).max() / b0.std()
         wa0 = x0
-        #wa0 = b
-        #wa0 = splinalg.spsolve(Smat, b)
-
-        #pdb.set_trace()
-        #callback(wa0)
         
-        #pdb.set_trace()
-        #print "starting minres"
-        #wa0 = 
+        wa0 = 0*b
         
         ilu = splinalg.spilu(self.Spre.tocsc())
         M_x = lambda x: ilu.solve(x)
-        # M_x = lambda x: splinalg.spsolve(self.Spre,x)        
         M = splinalg.LinearOperator((wa0.size,wa0.size), M_x)
-        
-        #wa, info = splinalg.minres(Smat, b, x0 = wa0, maxiter=maxiter, M=M, tol=tol, callback=callback)
-        #self.conv_hist = callback.hist
-        #'''
+
         self.conv_hist = []
         for i in range(50):
             wa, info = splinalg.gmres(Smat, b, x0 = wa0, maxiter=20, M=M, tol=tol)
@@ -391,15 +404,15 @@ class Adjoint(LSS):
             grad = self.dJds()
             print('iter ', (i+1)*20, resnorm, grad[0])
             self.conv_hist.append([(i+1)*20, resnorm, grad[0]])
-            ''''
-            plt.subplot(2,1,1)
-            plt.plot(wa)
-            plt.subplot(2,1,2)
-            plt.plot(res)
-            plt.show()
-            '''
+            #
+            #plt.subplot(2,1,1)
+            #plt.plot(wa)
+            #plt.subplot(2,1,2)
+            #plt.plot(res)
+            #plt.show()
+            #
             wa0 = wa.copy()
-        #'''     
+        '''     
 
         
         self.wa = wa.reshape(self.uMid.shape)
