@@ -232,18 +232,12 @@ class LSS(object):
         self._timing_ = {}
         self._timing_['init'] = time.time() - t0
 
+
     def Schur(self):
         """
         Builds the Schur complement of the KKT system'
         Also build B: the block-bidiagonal matrix
         """
-        # TODO: coarse schur, rhs?
-
-        # N_G = number of grids
-        # I_G = grid index, fine grid = 0
-        # offset = pow(2, I_G)
-        # make sure grids have 2^m + 1 time steps!
-
         t0 = time.time()
         N, m = self.u.shape[0] - 1, self.u.shape[1]
 
@@ -276,7 +270,79 @@ class LSS(object):
         self._timing_['schur'] = time.time() - t0
         return schur
 
+    def directSolve(self,A,b):
+        # solve linear system with a sparse direct solver
+        return splinalg.spsolve(A, b)
 
+    def iterSolve(self,A,b,x0,P=None,restrt=50,its=20,tol=1e-14):
+        # Iterative Solver (restarted GMRES with restrt * its iterations) 
+      
+        # preconditioner
+        if P is None:
+            M = None
+        else:
+            ilu = splinalg.spilu(P.tocsc())
+            M_x = lambda x: ilu.solve(x)
+            M = splinalg.LinearOperator((x0.size,x0.size), M_x)
+
+        for i in range(restrt):
+            x, info = splinalg.gmres(A, b, x0 = x0, maxiter=its, restart=its, M=M, tol=tol)
+            resnorm = np.linalg.norm(b - A * x)
+            print('iter ', (i+1) * its, resnorm)
+              
+            x0 = x.copy()
+
+        return x
+
+    # Multigrid Functions:
+
+    def SchurMG(self,N_G):
+        """
+        Builds the Schur complement of the KKT system for each grid level
+        Returns list of matrices
+        Also build B: the block-bidiagonal matrix
+        """
+        t0 = time.time()
+        N, m = self.u.shape[0] - 1, self.u.shape[1]
+
+        halfJ = 0.5 * self.dfdu(self.uMid, self.s).tocsr()
+        eyeDt = _diag(np.kron(1./ self.dt, np.ones(m)))
+
+        B1 = -eyeDt - halfJ
+        B2 = eyeDt - halfJ
+        B1 = (B1.data, B1.indices, B1.indptr)
+        B2 = (B2.data, B2.indices + m, B2.indptr)
+        B1 = sparse.csr_matrix(B1, (N * m, (N + 1) * m))
+        B2 = sparse.csr_matrix(B2, (N * m, (N + 1) * m))
+        self.B = B1 + B2 # TODO: save this only for fine grid I_G = 0
+        
+        # preconditioner matrix containing main block diagonal
+        B1d = B1[:,:-m]
+        B2d = B2[:,m:]
+
+        self.Spre = B1d * B1d.T + B2d * B2d.T # TODO: save as list of matrices
+
+
+        # the diagonal weights
+        dtFrac = self.dt / (self.t[-1] - self.t[0])
+        wb = 0.5 * (np.hstack([dtFrac, 0]) + np.hstack([0, dtFrac]))
+        wb = np.ones(m) * wb[:,np.newaxis]
+        self.wBinv = _diag(np.ravel(1./ wb))
+
+        schur = self.B * self.wBinv * self.B.T
+
+        self._timing_['schur'] = time.time() - t0
+        return schur
+
+    # TODO: FMG (rhs with offset definition!)
+    # TODO: restriction
+    # TODO: prolongation
+    # TODO: recursive V cycle
+
+    # N_G = number of grids
+    # I_G = grid index, fine grid = 0
+    # offset = pow(2, I_G)
+    # make sure grids have 2^m - 1 time steps = t must have 2^m time steps!
 
     def evaluate(self, J, window_type='sin2'):
         """Evaluate a time averaged objective function"""
@@ -348,9 +414,11 @@ class Adjoint(LSS):
     J: objective function. QoI = mean(J(u))
     dJdu and dfdu is computed from f if left undefined.
     """
-    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',maxiter=10000,tol=1e-14,T0skip=0, T1skip=0):
+    def __init__(self, f, u0, s, t, J, dJdu=None, dfdu=None, window_type='sin2',T0skip=0, T1skip=0):
         LSS.__init__(self, f, u0, s, t, dfdu)
 
+
+        # TODO: build separate solver functions in LSS class.  
         Smat = self.Schur()
 
         t0 = time.time()
@@ -370,13 +438,8 @@ class Adjoint(LSS):
 
         self.J, self.dJdu = J, dJdu
 
-        callback = Callback(self)
-        
-        
-        wa = splinalg.spsolve(Smat, b)
+        #wa = self.directSolve(Smat,b)
 
-        '''
-        # Iterative Solver (restarted GMRES)
         x01 = np.ones(self.uMid.shape) 
         x02 = np.random.rand(self.uMid.shape[0]) 
         
@@ -391,18 +454,17 @@ class Adjoint(LSS):
         
         wa0 = 0*b
         
-        ilu = splinalg.spilu(self.Spre.tocsc())
-        M_x = lambda x: ilu.solve(x)
-        M = splinalg.LinearOperator((wa0.size,wa0.size), M_x)
-
+        wa = self.iterSolve(Smat,b,wa0,P=self.Spre,restrt=5,its=20)
+        '''
         self.conv_hist = []
+  
         for i in range(50):
             wa, info = splinalg.gmres(Smat, b, x0 = wa0, maxiter=20, M=M, tol=tol)
-            res = self.rhs - Smat * wa 
+            res = b - Smat * wa
             resnorm = np.linalg.norm(res)
-            self.wa = wa.reshape(self.uMid.shape)
+            self.wa = x.reshape(self.uMid.shape)
             grad = self.dJds()
-            print('iter ', (i+1)*20, resnorm, grad[0])
+            print('iter ', (i+1) * 20, resnorm, grad[0])
             self.conv_hist.append([(i+1)*20, resnorm, grad[0]])
             #
             #plt.subplot(2,1,1)
@@ -412,9 +474,8 @@ class Adjoint(LSS):
             #plt.show()
             #
             wa0 = wa.copy()
-        '''     
-
-        
+        '''
+       
         self.wa = wa.reshape(self.uMid.shape)
         self._timing_['solve'] = time.time() - t0
 
@@ -435,7 +496,10 @@ class Adjoint(LSS):
         n0 = (self.t < self.t[0] + T0skip).sum()
         n1 = (self.t <= self.t[-1] - T1skip).sum()
 
+
         uMid, wa = self.uMid[n0:n1-1], self.wa[n0:n1-1]
+
+        print np.linalg.norm(uMid), np.linalg.norm(wa)
 
         prod = self.wa[:,:,np.newaxis] * dfds(self.uMid, self.s)
         grad1 = prod.sum(1).mean(0)
