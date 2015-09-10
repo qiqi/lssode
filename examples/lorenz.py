@@ -27,17 +27,17 @@ adjoint = []
 for rho in rhos:
     print(rho)
     for i in range(11):
-        T = 20
-        if i == 10: T = 200
+        T = 50
+        # if i == 10: T = 200
 
         t = 30 + dt * arange(int(T / dt))
 
-        x0 = random.rand(3)
-        tan = Tangent(lorenz, x0, rho, t)
+        # x0 = random.rand(3)
+        # tan = Tangent(lorenz, x0, rho, t)
 
-        J = tan.evaluate(obj)
-        dJds = tan.dJds(obj)
-        tangent.append(dJds)
+        # J = tan.evaluate(obj)
+        # dJds = tan.dJds(obj)
+        # tangent.append(dJds)
 
         x0 = random.rand(3)
         adj = Adjoint(lorenz, x0, rho, t, obj)
@@ -50,10 +50,10 @@ tangent = array(tangent).reshape([rhos.size, -1])
 adjoint = array(adjoint).reshape([rhos.size, -1])
 
 figure(figsize=(5,4))
-plot(rhos, tangent[:,:-1], 'xr')
-plot(rhos, tangent[:,-1], '-r')
-plot(rhos, adjoint[:,:-1], '+b')
-plot(rhos, adjoint[:,-1], '--b')
+# plot(rhos, tangent[:,:-1], 'xr')
+# plot(rhos, tangent[:,-1], '-r')
+# plot(rhos, adjoint[:,:-1], '+b')
+plot(rhos, adjoint, 'ob')
 ylim([0, 1.5])
 xlabel(r'$\rho$')
 ylabel(r'$d\overline{J}/d\rho$')
