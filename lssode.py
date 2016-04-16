@@ -397,7 +397,7 @@ class Tangent(LSS):
                 * win[:,np.newaxis]).mean(0)
 
         grad2 = pJps(uMid, self.s)[:,:,0].mean(0)
-        
+
         grad = np.ravel(grad1 + grad2)
 
         self._timing_['eval'] = time.time() - t0

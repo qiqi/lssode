@@ -19,7 +19,7 @@ def lorenz(u, rho):
 def obj(u, r):
     return (u[:,2] - 27)**2
 
-rhos = linspace(25, 34, 25)
+rhos = linspace(27, 33, 20)
 dt = 0.0025
 
 J, G = [], []
@@ -37,11 +37,11 @@ for rho in rhos:
 J, G = array(J), ravel(array(G))
 figure()
 plot(rhos, J, 'sk')
-axis([24,35,75,120])
+axis([26,34,75,95])
 xlabel('Design parameter')
 ylabel('Objective function')
 savefig('before.png')
 dr = 0.25
-plot([rhos-dr, rhos+dr], [J-G*dr, J+G*dr], '-k')
-axis([24,35,75,120])
+plot([rhos-dr, rhos+dr], [J-G*dr, J+G*dr], '-r', lw=2)
+axis([26,34,75,95])
 savefig('after.png')
